@@ -43,6 +43,7 @@ const games = [
     title: 'Skyline Sprint',
     tag: 'Endless Runner',
     playable: true,
+    actionLabel: 'Start run',
     description:
       'Leap across a neon skyline. One key to jump, infinite retries. The longer you survive, the faster it gets.',
   },
@@ -56,22 +57,25 @@ const games = [
   {
     id: 'stack',
     title: 'Echo Stack',
-    tag: 'Coming Soon',
-    playable: false,
-    description: 'Line up drifting tiles to build the tallest, cleanest tower. Coming soon.',
+    tag: 'Precision Stack',
+    playable: true,
+    actionLabel: 'Start stacking',
+    description: 'Line up drifting tiles to build the tallest, cleanest tower without losing rhythm.',
   },
 ];
+
+const engineFactories = {
+  runner: () => new RunnerGame(elements.canvas, uiBridge),
+  stack: () => new EchoStackGame(elements.canvas, uiBridge),
+};
 
 let activeGameId = 'runner';
 let activeEngine = null;
 
 elements.startButton.addEventListener('click', () => {
   const game = getGame(activeGameId);
-  if (!game?.playable) return;
-
-  if (activeGameId === 'runner' && activeEngine) {
-    activeEngine.start();
-  }
+  if (!game?.playable || !activeEngine) return;
+  activeEngine.start();
 });
 
 function getGame(id) {
@@ -114,10 +118,11 @@ function selectGame(gameId) {
 
   if (game.playable) {
     elements.startButton.disabled = false;
-    ensureRunnerGame();
-    uiBridge.setStatus('Tap or press space to jump. Keep running as it speeds up.');
+    elements.startButton.textContent = game.actionLabel ?? 'Start';
+    ensureGameEngine(game.id);
   } else {
     elements.startButton.disabled = true;
+    elements.startButton.textContent = 'Start';
     tearDownActiveEngine();
     uiBridge.setScore('--');
     uiBridge.setBest('--');
@@ -126,15 +131,21 @@ function selectGame(gameId) {
   }
 }
 
-function ensureRunnerGame() {
-  if (activeEngine instanceof RunnerGame) {
+function ensureGameEngine(gameId) {
+  const factory = engineFactories[gameId];
+  if (!factory) {
+    tearDownActiveEngine();
+    return;
+  }
+
+  if (activeEngine?.id === gameId) {
     uiBridge.setScore(activeEngine.getDisplayScore());
     uiBridge.setBest(activeEngine.getBestScore());
     return;
   }
 
   tearDownActiveEngine();
-  activeEngine = new RunnerGame(elements.canvas, uiBridge);
+  activeEngine = factory();
 }
 
 function tearDownActiveEngine() {
@@ -222,6 +233,7 @@ class RunnerGame {
 
     this.obstacles = [];
     this.ui.setScore(0);
+    this.ui.setStatus('Tap or press space to jump. Keep running as it speeds up.');
   }
 
   destroy() {
@@ -489,6 +501,506 @@ class RunnerGame {
       localStorage.setItem(this.storageKey, String(value));
     } catch (error) {
       console.warn('Unable to store score', error);
+    }
+  }
+
+  clearCanvas() {
+    this.ctx.setTransform(this.pixelRatio, 0, 0, this.pixelRatio, 0, 0);
+    this.ctx.clearRect(0, 0, this.width || this.canvas.width, this.height || this.canvas.height);
+  }
+}
+
+class EchoStackGame {
+  constructor(canvas, ui) {
+    this.id = 'stack';
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.ui = ui;
+
+    this.layerHeight = 22;
+    this.baseLinePadding = 34;
+    this.boundaryMargin = 60;
+    this.baseSpeed = 90;
+    this.speedGain = 7.5;
+    this.maxSpeed = 260;
+    this.gravity = 1100;
+    this.storageKey = 'pulse_arcade_echo_best';
+
+    this.handleLoop = this.handleLoop.bind(this);
+    this.handleResize = this.handleResize.bind(this);
+    this.handleKeyDown = this.handleKeyDown.bind(this);
+    this.handlePointer = this.handlePointer.bind(this);
+
+    this.handleResize();
+    this.echoes = this.buildEchoes();
+
+    window.addEventListener('resize', this.handleResize);
+    document.addEventListener('keydown', this.handleKeyDown);
+    this.canvas.addEventListener('pointerdown', this.handlePointer);
+
+    this.bestScore = this.loadBestScore();
+    this.time = 0;
+
+    this.reset();
+    this.ui.setBest(this.getBestScore());
+
+    this.animationFrame = requestAnimationFrame(this.handleLoop);
+  }
+
+  start() {
+    this.reset();
+    this.state = 'running';
+    this.spawnMovingBlock();
+    this.ui.setStatus('Drop each drifting tile when it lines up to keep the stack alive.');
+  }
+
+  reset() {
+    this.state = 'idle';
+    this.score = 0;
+    this.renderedScore = -1;
+    this.time = 0;
+    this.speed = this.baseSpeed;
+    this.fallingPieces = [];
+    this.currentBlock = null;
+    this.stack = [];
+    this.cameraOffset = 0;
+    this.cameraTarget = 0;
+    this.pulseTimer = 0;
+
+    const usableWidth = this.width || this.canvas.width || 360;
+    const baseWidth = Math.max(usableWidth * 0.65, 140);
+    const groundLine = this.baseLine ?? (this.height || this.canvas.height || 220) - this.baseLinePadding;
+    const baseY = groundLine - this.layerHeight;
+
+    this.stack.push({
+      x: (usableWidth - baseWidth) / 2,
+      width: baseWidth,
+      height: this.layerHeight,
+      y: baseY,
+      color: this.getColor(0),
+      settle: 1,
+      pulse: 0,
+    });
+
+    this.ui.setScore(0);
+    this.ui.setStatus('Tap Start or click the canvas to begin stacking echoes.');
+  }
+
+  destroy() {
+    cancelAnimationFrame(this.animationFrame);
+    window.removeEventListener('resize', this.handleResize);
+    document.removeEventListener('keydown', this.handleKeyDown);
+    this.canvas.removeEventListener('pointerdown', this.handlePointer);
+    this.clearCanvas();
+  }
+
+  handleResize() {
+    const pixelRatio = window.devicePixelRatio || 1;
+    const width = this.canvas.clientWidth || this.canvas.width;
+    const height = this.canvas.clientHeight || this.canvas.height;
+    const previousBaseLine =
+      typeof this.baseLine === 'number' ? this.baseLine : height - this.baseLinePadding;
+
+    this.canvas.width = Math.round(width * pixelRatio);
+    this.canvas.height = Math.round(height * pixelRatio);
+    this.ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+
+    this.pixelRatio = pixelRatio;
+    this.width = width;
+    this.height = height;
+    this.baseLine = height - this.baseLinePadding;
+
+    if (this.stack) {
+      const delta = this.baseLine - previousBaseLine;
+      this.stack.forEach((block) => {
+        block.y += delta;
+      });
+    }
+
+    this.echoes = this.buildEchoes();
+  }
+
+  buildEchoes() {
+    const count = 8;
+    return Array.from({ length: count }, () => this.createEcho());
+  }
+
+  createEcho() {
+    return {
+      x: Math.random() * (this.width || 360),
+      y: (this.height || 220) - Math.random() * (this.height || 220) * 1.2,
+      radius: 30 + Math.random() * 70,
+      speed: 12 + Math.random() * 24,
+      alpha: 0.08 + Math.random() * 0.12,
+      drift: (Math.random() - 0.5) * 30,
+      seed: Math.random() * Math.PI * 2,
+    };
+  }
+
+  handleLoop(timestamp) {
+    if (!this.lastTime) {
+      this.lastTime = timestamp;
+    }
+
+    const delta = Math.min((timestamp - this.lastTime) / 1000, 0.05);
+    this.lastTime = timestamp;
+    this.time += delta;
+
+    if (this.state === 'running') {
+      this.update(delta);
+    } else {
+      this.applyIdleAnimation(delta);
+    }
+
+    this.draw();
+    this.animationFrame = requestAnimationFrame(this.handleLoop);
+  }
+
+  update(dt) {
+    this.updateCurrentBlock(dt);
+    this.updateFallingPieces(dt);
+    this.updateStackAnimations(dt);
+    this.updateEchoes(dt);
+    this.updateCamera(dt);
+  }
+
+  applyIdleAnimation(dt) {
+    this.updateFallingPieces(dt);
+    this.updateStackAnimations(dt);
+    this.updateEchoes(dt);
+    this.updateCamera(dt);
+  }
+
+  updateCurrentBlock(dt) {
+    if (!this.currentBlock) return;
+    const block = this.currentBlock;
+    block.bobTime = (block.bobTime || 0) + dt;
+    block.x += block.direction * block.speed * dt;
+
+    const minX = -block.width - this.boundaryMargin;
+    const maxX = this.width + this.boundaryMargin;
+    if (block.x <= minX) {
+      block.x = minX;
+      block.direction = 1;
+    } else if (block.x + block.width >= maxX) {
+      block.x = maxX - block.width;
+      block.direction = -1;
+    }
+  }
+
+  updateFallingPieces(dt) {
+    if (!this.fallingPieces) return;
+    this.fallingPieces.forEach((piece) => {
+      piece.vy += this.gravity * dt;
+      piece.y += piece.vy * dt;
+      piece.rotation += piece.spin * dt;
+      piece.alpha -= dt * 0.6;
+    });
+    this.fallingPieces = this.fallingPieces.filter((piece) => piece.alpha > 0 && piece.y < this.height * 2);
+  }
+
+  updateStackAnimations(dt) {
+    if (!this.stack) return;
+    this.stack.forEach((block) => {
+      if (typeof block.settle === 'number' && block.settle < 1) {
+        block.settle = Math.min(1, block.settle + dt * 4);
+      }
+      if (block.pulse > 0) {
+        block.pulse = Math.max(0, block.pulse - dt);
+      }
+    });
+  }
+
+  updateEchoes(dt) {
+    if (!this.echoes) return;
+    this.echoes.forEach((echo) => {
+      echo.y -= echo.speed * dt;
+      echo.x += echo.drift * dt * 0.1;
+      if (echo.y + echo.radius < -40) {
+        Object.assign(echo, this.createEcho(), { y: this.height + echo.radius });
+      }
+      if (echo.x < -40) echo.x = this.width + 40;
+      if (echo.x > this.width + 40) echo.x = -40;
+    });
+  }
+
+  updateCamera(dt) {
+    const stackLength = this.stack ? this.stack.length : 0;
+    const blocksAboveBase = Math.max(0, stackLength - 1);
+    const desired = Math.max(0, blocksAboveBase * this.layerHeight - this.height * 0.4);
+    this.cameraTarget = desired;
+    const diff = this.cameraTarget - this.cameraOffset;
+    this.cameraOffset += diff * Math.min(1, dt * 3);
+  }
+
+  spawnMovingBlock() {
+    if (!this.stack?.length) return;
+    const lastBlock = this.stack[this.stack.length - 1];
+    if (!lastBlock) return;
+
+    const direction = this.stack.length % 2 === 0 ? 1 : -1;
+    const y = lastBlock.y - this.layerHeight;
+    const width = Math.max(32, lastBlock.width);
+    const margin = this.boundaryMargin;
+    const startX = direction === 1 ? -width - margin : this.width + margin;
+
+    this.currentBlock = {
+      x: startX,
+      width,
+      height: this.layerHeight,
+      y,
+      direction,
+      speed: this.speed,
+      color: this.getColor(this.stack.length),
+      bobTime: 0,
+    };
+  }
+
+  placeBlock() {
+    if (this.state === 'idle') {
+      this.start();
+      return;
+    }
+    if (this.state === 'over') {
+      this.start();
+      return;
+    }
+    if (this.state !== 'running' || !this.currentBlock) return;
+
+    const block = this.currentBlock;
+    if (!this.stack?.length) return;
+    const anchor = this.stack[this.stack.length - 1];
+    const left = Math.max(block.x, anchor.x);
+    const right = Math.min(block.x + block.width, anchor.x + anchor.width);
+    const overlap = right - left;
+
+    if (overlap <= 2) {
+      this.addFallingPiece(block.x, block.width, block.y, block.height, block.color);
+      this.currentBlock = null;
+      this.onFail();
+      return;
+    }
+
+    const trimmedLeft = left - block.x;
+    if (trimmedLeft > 1) {
+      this.addFallingPiece(block.x, trimmedLeft, block.y, block.height, block.color);
+    }
+    const trimmedRight = block.x + block.width - right;
+    if (trimmedRight > 1) {
+      this.addFallingPiece(right, trimmedRight, block.y, block.height, block.color);
+    }
+
+    const newBlock = {
+      x: left,
+      width: overlap,
+      height: this.layerHeight,
+      y: anchor.y - this.layerHeight,
+      color: block.color,
+      settle: 0,
+      pulse: 0.7,
+    };
+
+    this.stack.push(newBlock);
+    this.currentBlock = null;
+
+    this.score = this.stack.length - 1;
+    this.publishScore();
+
+    this.speed = Math.min(this.maxSpeed, this.baseSpeed + this.score * this.speedGain);
+    this.spawnMovingBlock();
+  }
+
+  addFallingPiece(x, width, y, height, color) {
+    this.fallingPieces.push({
+      x,
+      y,
+      width,
+      height,
+      color,
+      vy: -60 - Math.random() * 40,
+      rotation: 0,
+      spin: (Math.random() - 0.5) * 6,
+      alpha: 0.9,
+    });
+  }
+
+  onFail() {
+    this.state = 'over';
+    const finalScore = this.getDisplayScore();
+    if (finalScore > this.bestScore) {
+      this.bestScore = finalScore;
+      this.saveBestScore(finalScore);
+      this.ui.setBest(finalScore);
+    }
+    this.ui.setStatus('Misaligned tile! Tap Start to rebuild the tower.');
+  }
+
+  draw() {
+    this.ctx.setTransform(this.pixelRatio, 0, 0, this.pixelRatio, 0, 0);
+    this.ctx.clearRect(0, 0, this.width, this.height);
+
+    this.drawBackground();
+    this.drawEchoes();
+    this.drawStack();
+    this.drawCurrentBlock();
+    this.drawFallingPieces();
+
+    if (this.state === 'idle') {
+      this.drawOverlay('Tap start or the canvas to begin stacking');
+    } else if (this.state === 'over') {
+      this.drawOverlay('Tile slipped! Tap start to try again');
+    }
+  }
+
+  drawBackground() {
+    const ctx = this.ctx;
+    const gradient = ctx.createLinearGradient(0, 0, 0, this.height);
+    gradient.addColorStop(0, '#0b1120');
+    gradient.addColorStop(1, '#030712');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, this.width, this.height);
+
+    ctx.strokeStyle = 'rgba(148, 163, 184, 0.1)';
+    ctx.lineWidth = 1;
+    const spacing = 28;
+    ctx.beginPath();
+    for (let i = 0; i < this.width / spacing + 2; i++) {
+      const x = (i * spacing + (this.time * 20) % spacing) - spacing;
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, this.height);
+    }
+    ctx.stroke();
+  }
+
+  drawEchoes() {
+    if (!this.echoes) return;
+    const ctx = this.ctx;
+    this.echoes.forEach((echo) => {
+      ctx.save();
+      ctx.globalAlpha = echo.alpha;
+      ctx.strokeStyle = 'rgba(93, 224, 255, 0.4)';
+      ctx.lineWidth = 1.5;
+      const radius = echo.radius + Math.sin(this.time * 1.2 + echo.seed) * 6;
+      ctx.beginPath();
+      ctx.arc(echo.x, echo.y - this.cameraOffset * 0.35, radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    });
+  }
+
+  drawStack() {
+    if (!this.stack) return;
+    const ctx = this.ctx;
+    this.stack.forEach((block) => {
+      const offset = block.settle < 1 ? (1 - block.settle) * 18 : 0;
+      const y = block.y - this.cameraOffset - offset;
+
+      ctx.fillStyle = block.color;
+      drawRoundedRectPath(ctx, block.x, y, block.width, block.height, 6);
+      ctx.fill();
+
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
+      ctx.fillRect(block.x + 4, y + 3, block.width - 8, block.height * 0.4);
+
+      if (block.pulse > 0) {
+        ctx.save();
+        ctx.globalAlpha = block.pulse * 0.4;
+        ctx.strokeStyle = 'rgba(93, 224, 255, 0.8)';
+        ctx.lineWidth = 2;
+        drawRoundedRectPath(ctx, block.x - 4, y - 4, block.width + 8, block.height + 8, 8);
+        ctx.stroke();
+        ctx.restore();
+      }
+    });
+  }
+
+  drawCurrentBlock() {
+    if (!this.currentBlock) return;
+    const block = this.currentBlock;
+    const bob = Math.sin(block.bobTime * 3) * 4;
+    const y = block.y - this.cameraOffset - 16 + bob;
+    this.ctx.fillStyle = block.color;
+    drawRoundedRectPath(this.ctx, block.x, y, block.width, block.height, 6);
+    this.ctx.fill();
+    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
+    this.ctx.fillRect(block.x + 4, y + 3, block.width - 8, block.height * 0.4);
+  }
+
+  drawFallingPieces() {
+    if (!this.fallingPieces?.length) return;
+    const ctx = this.ctx;
+    this.fallingPieces.forEach((piece) => {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, piece.alpha);
+      ctx.translate(piece.x + piece.width / 2, piece.y - this.cameraOffset + piece.height / 2);
+      ctx.rotate(piece.rotation);
+      ctx.fillStyle = piece.color;
+      drawRoundedRectPath(ctx, -piece.width / 2, -piece.height / 2, piece.width, piece.height, 4);
+      ctx.fill();
+      ctx.restore();
+    });
+  }
+
+  drawOverlay(text) {
+    const ctx = this.ctx;
+    ctx.fillStyle = 'rgba(2, 6, 23, 0.72)';
+    drawRoundedRectPath(ctx, 18, 18, this.width - 36, 36, 12);
+    ctx.fill();
+
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = '600 14px "Inter", "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, this.width / 2, 36);
+  }
+
+  handleKeyDown(event) {
+    if (!['Space', 'ArrowUp', 'Enter'].includes(event.code)) return;
+    event.preventDefault();
+    this.placeBlock();
+  }
+
+  handlePointer(event) {
+    event.preventDefault();
+    this.placeBlock();
+  }
+
+  publishScore() {
+    if (this.renderedScore === this.score) return;
+    this.renderedScore = this.score;
+    this.ui.setScore(this.score);
+  }
+
+  getDisplayScore() {
+    return Math.max(0, Math.floor(this.score || 0));
+  }
+
+  getBestScore() {
+    return Math.max(0, Math.floor(this.bestScore || 0));
+  }
+
+  getColor(level) {
+    const hue = 250 + (level * 9) % 80;
+    const saturation = 75;
+    const lightness = 65 - Math.min(level * 0.7, 15);
+    return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+  }
+
+  loadBestScore() {
+    try {
+      const stored = Number(localStorage.getItem(this.storageKey));
+      return Number.isFinite(stored) ? stored : 0;
+    } catch (error) {
+      console.warn('Unable to read stored Echo Stack score', error);
+      return 0;
+    }
+  }
+
+  saveBestScore(value) {
+    try {
+      localStorage.setItem(this.storageKey, String(value));
+    } catch (error) {
+      console.warn('Unable to persist Echo Stack score', error);
     }
   }
 
