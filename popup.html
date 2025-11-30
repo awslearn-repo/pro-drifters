@@ -3,44 +3,59 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1.0" />
-    <title>Pro Drifters 3D</title>
+    <title>Pulse Mini Arcade</title>
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
-    <div class="hud">
-      <div class="stat-block">
-        <span class="label">Speed</span>
-        <span id="speedValue" class="value">0 km/h</span>
-      </div>
-      <div class="stat-block">
-        <span class="label">Distance</span>
-        <span id="distanceValue" class="value">0 m</span>
-      </div>
-      <div class="stat-block">
-        <span class="label">Score</span>
-        <span id="scoreValue" class="value">0</span>
-      </div>
-      <div class="stat-block">
-        <span class="label">Best Lap</span>
-        <span id="lapValue" class="value">--</span>
-      </div>
-      <button id="cameraButton" type="button">Change Camera (C)</button>
-    </div>
+    <div class="app">
+      <header class="hero">
+        <p class="eyebrow">Pulse Mini Arcade</p>
+        <h1>Play fast mini-games anywhere</h1>
+        <p class="subtext">
+          Pick a bite-sized challenge built for instant fun. New game modes are on the way.
+        </p>
+      </header>
 
-    <div class="powerups">
-      <p>Power-Ups: <span id="powerupValue">None</span></p>
-    </div>
+      <section class="game-selector" aria-label="Mini-game selection">
+        <div id="gameMenu" class="card-grid"></div>
+      </section>
 
-    <div class="instructions">
-      <h1>Pro Drifters</h1>
-      <p>
-        Controls: Arrow keys / WASD to drive, Space to handbrake, Shift for boost,
-        C to change camera, R to reset. Avoid traffic, pick up boost orbs, and
-        drift for bonus score.
-      </p>
-    </div>
+      <section class="game-panel" aria-live="polite">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow" id="gameTag">Endless Runner</p>
+            <h2 id="gameTitle">Skyline Sprint</h2>
+          </div>
+          <button id="startButton" type="button">Start run</button>
+        </div>
 
-    <canvas id="gameCanvas" width="1024" height="640"></canvas>
+        <div class="scoreboard" aria-label="Scoreboard">
+          <div class="score">
+            <span>Score</span>
+            <strong id="scoreValue">0</strong>
+          </div>
+          <div class="score">
+            <span>Best</span>
+            <strong id="bestValue">0</strong>
+          </div>
+        </div>
+
+        <canvas
+          id="gameCanvas"
+          width="360"
+          height="200"
+          role="img"
+          aria-label="Mini game canvas"
+        ></canvas>
+        <p class="status" id="statusMessage">
+          Tap or press space to jump. Dodge the neon blocks to push your score higher.
+        </p>
+        <p class="description" id="gameDescription">
+          Skyline Sprint is a minimalist endless runner across a glowing cityscape. One jump key.
+          Infinite retries. How far can you sprint before the skyline catches you?
+        </p>
+      </section>
+    </div>
 
     <script type="module" src="popup.js"></script>
   </body>
