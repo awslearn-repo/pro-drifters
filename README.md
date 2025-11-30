@@ -1,16 +1,25 @@
-# Pro Drifters 3D
+# Pulse Mini Arcade
 
-This repo contains a self-contained Chrome extension that embeds the Pro Drifters 3D experience in the browser action popup.
+Pulse Mini Arcade is a Chrome extension that packs a collection of quick, lightweight mini-games directly into the browser action popup. The first release ships with **Skyline Sprint**, a one-button endless runner built for instant play.
+
+## Current mini-game: Skyline Sprint
+- Auto-runner with a single tap/press jump mechanic
+- Smooth difficulty curve where speed gradually increases as you survive
+- Responsive canvas rendering tuned for popups (high-DPI aware)
+- Real-time scoring plus a stored personal best so you can chase improvements
+
+## Designed for more games
+The popup features a card-based selector so new mini-games can be added without changing the layout. To add one:
+1. Register it in `popup.js` inside the `games` array.
+2. Provide a playable implementation (or mark it as coming soon) and wire its start logic to the menu.
 
 ## Load the extension in Chrome
-
-1. Clone or download this repository so that you have the files locally.
+1. Clone or download this repository so the files are available locally.
 2. Open Chrome and visit `chrome://extensions`.
 3. Enable **Developer mode** in the top-right corner.
 4. Click **Load unpacked** and select the root of this repo (the folder containing `manifest.json`).
 
-Chrome should now load the extension without the “Manifest file is missing or unreadable” error because the manifest lives at the top level of the directory that you select.
+Chrome will load the extension immediately. Use the toolbar icon to open the popup and start running.
 
-## Packaging
-
-If you want to distribute the extension, create an archive (.zip) from the repo root so the manifest remains in the top-level of the package before uploading it to the Chrome Web Store dashboard.
+## Packaging for distribution
+Create a `.zip` file from the repo root and upload it to the Chrome Web Store dashboard. Keep `manifest.json` in the top-level of the archive so Chrome can read it.

@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "Pro Drifters 3D",
-  "description": "Drive detailed 3D cars with physics, AI traffic, scoring, and power-ups inside the extension popup.",
+  "name": "Pulse Mini Arcade",
+  "description": "Launch fast, lightweight mini-games—starting with a one-tap endless runner—directly from the Chrome toolbar.",
   "version": "1.0.0",
   "action": {
-    "default_title": "Pro Drifters 3D",
+    "default_title": "Pulse Mini Arcade",
     "default_popup": "popup.html"
   },
   "icons": {
