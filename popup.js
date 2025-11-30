@@ -65,9 +65,6 @@ const games = [
 let activeGameId = 'runner';
 let activeEngine = null;
 
-renderGameMenu();
-selectGame(activeGameId);
-
 elements.startButton.addEventListener('click', () => {
   const game = getGame(activeGameId);
   if (!game?.playable) return;
@@ -500,3 +497,6 @@ class RunnerGame {
     this.ctx.clearRect(0, 0, this.width || this.canvas.width, this.height || this.canvas.height);
   }
 }
+
+renderGameMenu();
+selectGame(activeGameId);
