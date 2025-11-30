@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+    <title>Pro Drifters 3D</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="hud">
+      <div class="stat-block">
+        <span class="label">Speed</span>
+        <span id="speedValue" class="value">0 km/h</span>
+      </div>
+      <div class="stat-block">
+        <span class="label">Distance</span>
+        <span id="distanceValue" class="value">0 m</span>
+      </div>
+      <div class="stat-block">
+        <span class="label">Score</span>
+        <span id="scoreValue" class="value">0</span>
+      </div>
+      <div class="stat-block">
+        <span class="label">Best Lap</span>
+        <span id="lapValue" class="value">--</span>
+      </div>
+      <button id="cameraButton" type="button">Change Camera (C)</button>
+    </div>
+
+    <div class="powerups">
+      <p>Power-Ups: <span id="powerupValue">None</span></p>
+    </div>
+
+    <div class="instructions">
+      <h1>Pro Drifters</h1>
+      <p>
+        Controls: Arrow keys / WASD to drive, Space to handbrake, Shift for boost,
+        C to change camera, R to reset. Avoid traffic, pick up boost orbs, and
+        drift for bonus score.
+      </p>
+    </div>
+
+    <canvas id="gameCanvas" width="1024" height="640"></canvas>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>
