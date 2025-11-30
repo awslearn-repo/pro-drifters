@@ -727,6 +727,7 @@ class EchoStackGame {
   updateCamera(dt) {
     const stackLength = this.stack ? this.stack.length : 0;
     const blocksAboveBase = Math.max(0, stackLength - 1);
+    // Positive offsets push the entire scene downward so upper blocks stay on-screen.
     const desired = Math.max(0, blocksAboveBase * this.layerHeight - this.height * 0.4);
     this.cameraTarget = desired;
     const diff = this.cameraTarget - this.cameraOffset;
@@ -882,7 +883,7 @@ class EchoStackGame {
       ctx.lineWidth = 1.5;
       const radius = echo.radius + Math.sin(this.time * 1.2 + echo.seed) * 6;
       ctx.beginPath();
-      ctx.arc(echo.x, echo.y - this.cameraOffset * 0.35, radius, 0, Math.PI * 2);
+      ctx.arc(echo.x, echo.y + this.cameraOffset * 0.35, radius, 0, Math.PI * 2);
       ctx.stroke();
       ctx.restore();
     });
@@ -893,7 +894,7 @@ class EchoStackGame {
     const ctx = this.ctx;
     this.stack.forEach((block) => {
       const offset = block.settle < 1 ? (1 - block.settle) * 18 : 0;
-      const y = block.y - this.cameraOffset - offset;
+      const y = block.y + this.cameraOffset - offset;
 
       ctx.fillStyle = block.color;
       drawRoundedRectPath(ctx, block.x, y, block.width, block.height, 6);
@@ -918,7 +919,7 @@ class EchoStackGame {
     if (!this.currentBlock) return;
     const block = this.currentBlock;
     const bob = Math.sin(block.bobTime * 3) * 4;
-    const y = block.y - this.cameraOffset - 16 + bob;
+    const y = block.y + this.cameraOffset - 16 + bob;
     this.ctx.fillStyle = block.color;
     drawRoundedRectPath(this.ctx, block.x, y, block.width, block.height, 6);
     this.ctx.fill();
@@ -932,7 +933,7 @@ class EchoStackGame {
     this.fallingPieces.forEach((piece) => {
       ctx.save();
       ctx.globalAlpha = Math.max(0, piece.alpha);
-      ctx.translate(piece.x + piece.width / 2, piece.y - this.cameraOffset + piece.height / 2);
+      ctx.translate(piece.x + piece.width / 2, piece.y + this.cameraOffset + piece.height / 2);
       ctx.rotate(piece.rotation);
       ctx.fillStyle = piece.color;
       drawRoundedRectPath(ctx, -piece.width / 2, -piece.height / 2, piece.width, piece.height, 4);
